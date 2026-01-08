@@ -35,6 +35,3 @@ On Linux, the installation can be done directly in an automated way, just open a
 ```shell
 sh -c "$(wget -O- https://raw.githubusercontent.com/AdAstra-LD/Pokemon-DS-Map-Studio/master/pdsms-linux.sh)"
 ```
-
-## Notes
-If you wish to export `.nsbmd` files, `g3dcvtr.exe` and `xerces-c_2_5_0.dll` must be placed into the `bin/converter` folder.
