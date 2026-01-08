@@ -22,6 +22,7 @@ This is due to the additional 3D layer, and the new "exportgroup" and "egcenter"
 ## Requirements
 *   **Java 21**: Required to run the application.
 *   **Python**: Required for 3D model conversion (via `converter.py`). Ensure `python` is in your system's PATH.
+*   The generated jar exe must be in the same directory as converter/converter.py
 
 ## Running
 Pokemon DS Map Studio has been tested under Windows, Linux and MacOS.
