@@ -151,16 +151,31 @@ class NSBMDConverter:
         num_models = 1
         
         # --- MDL0 Block Header (Dictionary for Models) ---
-        # Note: Map Studio typically exports one model. We write a standard dictionary
-        # entry that points to the Model Data immediately following the dictionary.
+        # Nitro blocks require a Resource Dictionary even if only one model exists.
+        # This matches the skip/read logic in LibNDSFormats (NSBMD.cs)
         
-        model_start = w.tell()
-        w.write("<I", 0) # [Total Size]: Size of this entire Model block (relative or absolute depending on loader)
-        w.write("<I", 0) # [Code Offset]: Offset to Object/Bone definitions
-        w.write("<I", 0) # [TexPal Offset]: Offset to Material/Texture linkage
-        w.write("<I", 0) # [Poly Offset]: Offset to Polygon headers
-        w.write("<I", 0) # [Poly End Offset]: End of Polygon data
-        w.write_bytes(b'\x00' * 4) # Reserved/Padding
+        w.write("<B", 0)           # Dummy 0
+        w.write("<B", 1)           # num_models = 1
+        
+        offset_dict_start = w.tell()
+        # Dictionary Header (14 bytes) + Entry Table (4 bytes)
+        w.write_bytes(b'\x00' * 18) 
+        
+        offset_model_offsets = w.tell()
+        w.write("<I", 0)           # Offset to Model 0 Data (relative to MDL0 start)
+        
+        # Model Name (16 bytes)
+        model_name = "model0".encode('ascii')
+        w.write_bytes(model_name.ljust(16, b'\x00'))
+        
+        # --- Model Data Starts Here ---
+        model_data_start = w.tell()
+        w.seek(offset_model_offsets)
+        w.write("<I", model_data_start)
+        w.seek(model_data_start)
+        
+        model_start = w.tell() # Beginning of the actual model data structure (totalsize, etc)
+        w.write("<I", 0) # [Total Size]: Size of this entire Model block
         
         # Counts: Essential for GPU memory allocation on the NDS hardware.
         counts = self.get_model_counts(xml_root)
@@ -1146,7 +1161,7 @@ class NSBMDConverter:
             
         self.writer.write("<4s", signature)       # Signature
         self.writer.write("<H", 0xFEFF)           # Byte Order Mark (Little Endian)
-        self.writer.write("<H", 0x0001)           # Version (1.0)
+        self.writer.write("<H", 0x0002)           # Version (2.0) - Required by DSPRE
         
         file_size_offset = self.writer.tell()
         self.writer.write("<I", 0)                # Total File Size Placeholder
@@ -1162,10 +1177,24 @@ class NSBMDConverter:
         elif export_mode == 'both':
             chunks_to_write = ['MDL0', 'TEX0']
             
-        self.writer.write("<H", len(chunks_to_write)) 
+        # Number of blocks
+        num_blocks = len(chunks_to_write)
+        self.writer.write("<H", num_blocks) 
         
+        # --- Block Offset Table ---
+        # Nitro files require a table of absolute offsets to each block immediately following the header
+        block_offsets_pos = self.writer.tell()
+        for _ in range(num_blocks):
+            self.writer.write("<I", 0) # Placeholder for block offset
+            
         # --- Write Chunks ---
+        actual_offsets = []
         for chunk_tag in chunks_to_write:
+            # Align each block to 4 bytes
+            align_pad = (4 - (self.writer.tell() % 4)) % 4
+            self.writer.write_bytes(b'\x00' * align_pad)
+            
+            actual_offsets.append(self.writer.tell())
             if chunk_tag == 'MDL0':
                 print("Building MDL0 (Model Data)...")
                 mdl0_data = self.build_mdl0_block(xml_root)
@@ -1174,6 +1203,13 @@ class NSBMDConverter:
                 print("Building TEX0 (Texture Data)...")
                 tex0_data = self.build_tex0_block(xml_root)
                 self.writer.write_bytes(tex0_data)
+        
+        # --- Backfill Block Offsets ---
+        curr_pos = self.writer.tell()
+        self.writer.seek(block_offsets_pos)
+        for offset in actual_offsets:
+            self.writer.write("<I", offset)
+        self.writer.seek(curr_pos)
         
         # --- Finalize ---
         # Update Total File Size in Header
