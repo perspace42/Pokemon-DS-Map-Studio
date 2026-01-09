@@ -587,7 +587,7 @@ public class NsbtxOutputInfoDialog extends javax.swing.JDialog {
                         String filename = new File(pathSave).getName();
                         filename = Utils.removeExtensionFromPath(filename);
                         try {
-                            String converterPath = "../PKMDSMAP_Converter/CONVERTER/converter.py";
+                            String converterPath = "converter/converter.py";
                             String[] cmd = new String[] { "python", converterPath, pathSave, "-etex", "-o", filename };
 
                             if (!Files.exists(Paths.get(converterPath))) {
@@ -655,7 +655,7 @@ public class NsbtxOutputInfoDialog extends javax.swing.JDialog {
                             nFilesNotConverted++;
                             exportStatus = ConvertStatus.CONVERTER_NOT_FOUND_STATUS;
                             errorMsgs.set(nFilesProcessed,
-                                    "The program \"converter.py\" is not found in the \"../PKMDSMAP_Converter/CONVERTER/\" folder.\n"
+                                    "The program \"converter.py\" is not found in the \"converter\" folder.\n"
                                             + "Make sure the script exists and Python is installed.");
 
                         } catch (InterruptedException ex) {

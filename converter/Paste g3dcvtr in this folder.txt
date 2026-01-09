@@ -1,3 +1,0 @@
-Paste the following programs in this folder:
-- g3dcvtr.exe
-- xerces-c_2_5_0.dll

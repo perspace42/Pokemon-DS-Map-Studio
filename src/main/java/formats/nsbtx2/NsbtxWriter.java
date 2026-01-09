@@ -49,7 +49,7 @@ public class NsbtxWriter {
             System.out.println("File exists!");
             String filename = new File(imdPath).getName();
             filename = Utils.removeExtensionFromPath(filename);
-            String converterPath = "../PKMDSMAP_Converter/CONVERTER/converter.py";
+            String converterPath = "converter/converter.py";
             String[] cmd = new String[] { "python", converterPath, imdPath, "-etex", "-o", filename };
 
             if (!Files.exists(Paths.get(converterPath))) {

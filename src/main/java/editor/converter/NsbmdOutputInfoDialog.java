@@ -456,7 +456,7 @@ public class NsbmdOutputInfoDialog extends javax.swing.JDialog {
                     String filename = new File(nsbPath).getName();
 
                     try {
-                        String converterPath = "../PKMDSMAP_Converter/CONVERTER/converter.py";
+                        String converterPath = "converter/converter.py";
                         String[] cmd;
                         if (includeNsbtx) {
                             cmd = new String[] { "python", converterPath, imdPath, "-eboth", "-o", filename };
@@ -522,7 +522,7 @@ public class NsbmdOutputInfoDialog extends javax.swing.JDialog {
                         nFilesNotConverted++;
                         exportStatus = ConvertStatus.CONVERTER_NOT_FOUND_STATUS;
                         errorMsgs.set(nFilesProcessed,
-                                "The program \"converter.py\" is not found in the \"../PKMDSMAP_Converter/CONVERTER/\" folder.\n"
+                                "The program \"converter.py\" is not found in the \"converter\" folder.\n"
                                         + "Make sure the script exists and Python is installed.");
                     } catch (InterruptedException ex) {
                         nFilesNotConverted++;
