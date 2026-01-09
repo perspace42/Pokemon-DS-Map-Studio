@@ -19,9 +19,14 @@ This is due to the additional 3D layer, and the new "exportgroup" and "egcenter"
 - Pokemon Black/White
 - Pokemon Black 2/ White 2
 
+## Requirements
+*   **Java 21**: Required to run the application.
+*   **Python**: Required for 3D model conversion (via `converter.py`). Ensure `python` is in your system's PATH.
+
 ## Running
 Pokemon DS Map Studio has been tested under Windows, Linux and MacOS.
-In order to run it, Java 21 must be installed on your computer, regardless of the operating system you are using. 
+In order to run it, Java 21 and Python must be installed on your computer.
+
 Pokemon DS Map Studio can be executed by double clicking the "PokemonDsMapStudio.jar" file. 
 
 If it doesn't open, try typing the following command in a terminal:
@@ -29,7 +34,17 @@ If it doesn't open, try typing the following command in a terminal:
 java -jar PokemonDSMapStudio.jar
 ```
 and look at the output.
-If you don't fully understand that, please open an issue in the appropriate section of this repository.
+
+## Building from Source
+This project uses Git submodules for dependencies. To clone the repository with all components, use:
+```shell
+git clone --recursive https://github.com/perspace42/Pokemon-DS-Map-Studio.git
+```
+To build the project and package it with the latest converter:
+```shell
+./gradlew installDist
+```
+The application and its dependencies will be located in `build/install/Pokemon-DS-Map-Studio/`.
 
 On Linux, the installation can be done directly in an automated way, just open a terminal and type:
 ```shell

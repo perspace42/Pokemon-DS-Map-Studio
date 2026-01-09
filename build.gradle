@@ -36,3 +36,20 @@ jar {
         configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
     }
 }
+
+task syncConverter(type: Copy) {
+    from 'deps/PKMDSMAP_Converter/CONVERTER/converter.py'
+    into 'converter'
+}
+
+compileJava.dependsOn syncConverter
+
+distributions {
+    main {
+        contents {
+            from('converter') {
+                into 'converter'
+            }
+        }
+    }
+}
