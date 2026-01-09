@@ -17,7 +17,7 @@ import utils.Utils;
  */
 public class NsbtxWriter {
 
-    //TODO: improve all of this by not using the converter
+    // TODO: improve all of this by not using the converter
 
     public static byte[] writeNsbtx(Nsbtx2 nsbtx, String fileName) throws IOException {
 
@@ -25,8 +25,8 @@ public class NsbtxWriter {
 
         String path = System.getProperty("user.dir") + File.separator + fileName;
         System.out.println(path);
-        //path = Utils.removeExtensionFromPath(path);
-        //System.out.println(path);
+        // path = Utils.removeExtensionFromPath(path);
+        // System.out.println(path);
         path = Utils.addExtensionToPath(path, "imd");
         System.out.println(path);
 
@@ -49,14 +49,8 @@ public class NsbtxWriter {
             System.out.println("File exists!");
             String filename = new File(imdPath).getName();
             filename = Utils.removeExtensionFromPath(filename);
-            String converterPath = "converter/g3dcvtr.exe";
-            String[] cmd;
-            if (System.getProperty("os.name").toLowerCase().startsWith("windows")) {
-                cmd = new String[]{converterPath, imdPath, "-etex", "-o", filename};
-            } else {
-                cmd = new String[]{"wine", converterPath, imdPath, "-etex", "-o", filename};
-                // NOTE: wine call works only with relative path
-            }
+            String converterPath = "../PKMDSMAP_Converter/CONVERTER/converter.py";
+            String[] cmd = new String[] { "python", converterPath, imdPath, "-etex", "-o", filename };
 
             if (!Files.exists(Paths.get(converterPath))) {
                 System.out.println("Converter not found!");
