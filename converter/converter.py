@@ -114,6 +114,31 @@ class NSBMDConverter:
         self.CMD_BEGIN_VTXS  = 0x40  # [1 word] Defines primitive type (Tri, Quad, Strip)
         self.CMD_END_VTXS    = 0x41  # [0 word] Terminates a primitive stream
 
+    def build_nitro_dictionary(self, w, count):
+        """
+        Builds a Nitro resource dictionary header.
+        
+        The Pokemon-DS-Rom-Editor loader (NSBMD.cs line 434) skips:
+          stream.Skip(10 + 4 + (num * 4))
+        
+        This means it expects:
+          - 10 bytes: Dictionary tree structure  
+          - 4 bytes: Padding/unknown
+          - (num * 4) bytes: Offset table (handled separately)
+        
+        Total: 14 bytes before offset table
+        
+        We write exactly 14 bytes to match this skip pattern.
+        """
+        # Write 16 bytes of dictionary header (matching loader's skip of 1+1+14)
+        # Byte 0: Dummy
+        w.write("<B", 0)
+        # Byte 1: Count
+        w.write("<B", count)
+        # Bytes 2-15: Padding (14 bytes to make total 16)
+        w.write_bytes(b'\x00' * 14)
+        
+        return w.tell()
     def parse_imd(self, input_path):
         """Parses the IMD XML file and returns the root element."""
         print(f"Parsing IMD: {input_path}")
@@ -154,13 +179,13 @@ class NSBMDConverter:
         # Nitro blocks require a Resource Dictionary even if only one model exists.
         # This matches the skip/read logic in LibNDSFormats (NSBMD.cs)
         
-        w.write("<B", 0)           # Dummy 0
-        w.write("<B", 1)           # num_models = 1
+        self.build_nitro_dictionary(w, num_models)
         
-        offset_dict_start = w.tell()
-        # Dictionary Header (14 bytes) + Entry Table (4 bytes)
-        w.write_bytes(b'\x00' * 18) 
+        # Loader skips 14 + num*4 after count (NSBMD.cs:434)
+        # Write first offset table (skipped)
+        w.write("<I", 0)
         
+        # Write second offset table (read at line 439)
         offset_model_offsets = w.tell()
         w.write("<I", 0)           # Offset to Model 0 Data (relative to MDL0 start)
         
@@ -175,14 +200,19 @@ class NSBMDConverter:
         w.seek(model_data_start)
         
         model_start = w.tell() # Beginning of the actual model data structure (totalsize, etc)
-        w.write("<I", 0) # [Total Size]: Size of this entire Model block
+        w.write("<I", 0) # [0x00] Total Size: Size of this entire Model block
+        w.write("<I", 0) # [0x04] Code Offset (backfilled later)
+        w.write("<I", 0) # [0x08] Material Offset (backfilled later)
+        w.write("<I", 0) # [0x0C] Polygon Offset (backfilled later)
+        w.write("<I", 0) # [0x10] Polygon End (backfilled later)
+        w.write("<I", 0) # [0x14] Padding
         
         # Counts: Essential for GPU memory allocation on the NDS hardware.
         counts = self.get_model_counts(xml_root)
-        w.write("<B", counts['mat'])  # Number of materials
-        w.write("<B", counts['poly']) # Number of polygon groups
-        w.write("<B", 0)              # LastStackId: Used for matrix stack state persistence
-        w.write("<B", 1)              # ScaleMode: 0=Standard, 1=Maya, 2=Max (影响变换计算)
+        w.write("<B", counts['mat'])  # [0x18] Number of materials
+        w.write("<B", counts['poly']) # [0x19] Number of polygon groups
+        w.write("<B", 0)              # [0x1A] LastStackId: Used for matrix stack state persistence
+        w.write("<B", 1)              # [0x1B] ScaleMode: 0=Standard, 1=Maya, 2=Max (影响变换计算)
         
         # Scale & BBox: Stored as FX32 (Fixed point 1.19.12)
         # Bounding boxes are crucial for frustum culling on the DS.
@@ -220,6 +250,13 @@ class NSBMDConverter:
         # 3. Polygon Block (Display Lists)
         poly_offset = w.tell() - model_start
         self.build_polygon_block(w, xml_root)
+        
+        # Final Block Alignment (4 bytes) - MUST be done before calculating poly_end!
+        w.seek(0, 2)
+        align_pad = (4 - (w.tell() % 4)) % 4
+        w.write_bytes(b'\x00' * align_pad)
+        
+        # Now calculate poly_end AFTER alignment
         poly_end = w.tell() - model_start
         
         # --- Backfill Offsets ---
@@ -232,10 +269,6 @@ class NSBMDConverter:
         w.write("<I", poly_offset)
         w.write("<I", poly_end)
         
-        # Final Block Alignment (4 bytes)
-        w.seek(0, 2)
-        align_pad = (4 - (w.tell() % 4)) % 4
-        w.write_bytes(b'\x00' * align_pad)
         
         # Final MDL0 Section Size
         final_size = w.tell()
@@ -243,20 +276,31 @@ class NSBMDConverter:
         return w.data
 
     def get_model_counts(self, xml_root):
-        """Extracts model counts (materials, polygons, vertices, etc.) from output_info node."""
+        """Extracts model counts (materials, polygons, vertices, etc.) from IMD XML."""
         counts = {'mat': 0, 'poly': 0, 'vertex': 0, 'tri': 0, 'quad': 0}
         
+        # Get primitive counts from output_info (these are triangle/quad counts, NOT object counts)
         output_info = xml_root.find(".//output_info")
         if output_info is not None:
              counts['vertex'] = int(output_info.get("vertex_size", 0))
-             counts['poly'] = int(output_info.get("polygon_size", 0))
              counts['tri'] = int(output_info.get("triangle_size", 0))
              counts['quad'] = int(output_info.get("quad_size", 0))
              
-        # Material count depends on material_array size
+        # Material count from material_array
         mat_array = xml_root.find(".//material_array")
         if mat_array is not None:
-            counts['mat'] = int(mat_array.get("size", 0))
+            mat_count = int(mat_array.get("size", 0))
+            if mat_count > 255:
+                raise ValueError(f"Material count ({mat_count}) exceeds NSBMD limit of 255. Please reduce materials in your map.")
+            counts['mat'] = mat_count
+        
+        # Polygon count from polygon_array (number of polygon objects, NOT primitives)
+        poly_array = xml_root.find(".//polygon_array")
+        if poly_array is not None:
+            poly_count = int(poly_array.get("size", 0))
+            if poly_count > 255:
+                raise ValueError(f"Polygon count ({poly_count}) exceeds NSBMD limit of 255. Please split your map into smaller chunks.")
+            counts['poly'] = poly_count
             
         return counts
 
@@ -316,12 +360,21 @@ class NSBMDConverter:
             is_dummy = False
             
         # --- Dictionary: Maps object names to data ---
-        # Format: 14 bytes header + (4 bytes per entry * N)
-        w.write_bytes(b'\x00' * (14 + 4 * num_objects))
+        # Pokemon-DS-Rom-Editor expects (NSBMD.cs line 512):
+        #   stream.Skip(14 + (objnum * 4));
+        # This skips: 14-byte dictionary + (objnum *4) offset table #1
+        # Then it READS another (objnum * 4) offset table #2 at lines 522-524
+        # So we must write TWO offset tables!
         
-        # --- Offsets Table: Relative offsets to individual object data structures ---
+        self.build_nitro_dictionary(w, num_objects)
+        
+        # First offset table (will be skipped by loader - part of dictionary structure)
+        w.write_bytes(b'\x00' * (4 * num_objects))
+
+        # Second offset table (will be READ by loader - actual offsets)
         offsets_start = w.tell()
         w.write_bytes(b'\x00' * (4 * num_objects))
+
         
         # --- Names: 16-byte fixed-length ASCII strings ---
         if is_dummy:
@@ -408,10 +461,16 @@ class NSBMDConverter:
     def build_material_block(self, w, xml_root):
         """
         Constructs the Material Group (Textures & Palettes linkage).
-        This block defines the visual properties of the surfaces, including
-        lighting, alpha blending, and texture mapping parameters.
         """
         base_offset = w.tell()
+        
+        # Header: Pointers to texture and palette linkage blocks (4 bytes)
+        # Read at NSBMD.cs:555-556
+        tex_off_ptr = w.tell()
+        w.write("<H", 0) # texoffset placeholder
+        pal_off_ptr = w.tell()
+        w.write("<H", 0) # paloffset placeholder
+
         
         # Parse Materials from XML
         materials = []
@@ -422,12 +481,20 @@ class NSBMDConverter:
         
         num_materials = len(materials)
         
-        # --- Dictionary: Maps material names to their property definitions ---
-        w.write_bytes(b'\x00' * (14 + 4 * num_materials))
+        # --- Dictionary for Materials ---
+        self.build_nitro_dictionary(w, num_materials)
         
-        # --- Offsets Table ---
+        # Loader skips 16 + matnum*4 (NSBMD.cs:566)
+        # The 16 includes the 4 byte tex/pal offsets + 12 additional? 
+        # Actually, NSBMD.cs reads tex/pal (4 bytes) THEN skips 16.
+        # So we need 16 bytes of "dictionary" even after tex/pal headers.
+        
+        # SKIPPED OFFSET TABLE
+        w.write_bytes(b'\x00' * (4 * num_materials))
+        
+        # READ OFFSET TABLE (Read at NSBMD.cs:571)
         offsets_start = w.tell()
-        w.write_bytes(b'\x00' * (4 * num_materials)) 
+        w.write_bytes(b'\x00' * (4 * num_materials))
         
         # --- Names ---
         for m in materials:
@@ -554,7 +621,7 @@ class NSBMDConverter:
              w.write("<I", off)
         w.seek(current)
         
-        # --- Linkage Blocks (Texture & Palette) ---
+        # --- Build Texture and Palette Maps ---
         # Associate Material IDs with Texture/Palette names for runtime binding.
         tex_map = {}
         pal_map = {}
@@ -574,9 +641,21 @@ class NSBMDConverter:
                 if p_name:
                     if p_name not in pal_map: pal_map[p_name] = []
                     pal_map[p_name].append(i)
-                    
+        
+        # --- Linkage Blocks (Texture & Palette) ---
+        tex_linkage_pos = w.tell()
         self.build_linkage_block(w, tex_map, base_offset)
+        pal_linkage_pos = w.tell()
         self.build_linkage_block(w, pal_map, base_offset)
+        
+        # Finalize material block header
+        current = w.tell()
+        w.seek(tex_off_ptr)
+        w.write("<H", tex_linkage_pos - base_offset)
+        w.seek(pal_off_ptr)
+        w.write("<H", pal_linkage_pos - base_offset)
+        w.seek(current)
+
 
     def build_linkage_block(self, w, item_map, section_start):
         """
@@ -588,15 +667,15 @@ class NSBMDConverter:
         count = len(items)
         
         # Header: Count and padding
-        w.write("<B", 0) 
-        w.write("<B", count)
-        w.write_bytes(b'\x00' * 14) # 16-byte header
+        self.build_nitro_dictionary(w, count)
         
         if count == 0: return
             
-        # Offsets Table Placeholder
+        # TWO Offset Tables (skipped then read at NSBMD.cs:683-684)
+        w.write_bytes(b'\x00' * (4 * count)) # SKIPPED
         offsets_table_start = w.tell()
-        w.write_bytes(b'\x00' * (4 * count))
+        w.write_bytes(b'\x00' * (4 * count)) # READ
+
         
         # Names (16 bytes each)
         for name in items:
@@ -672,12 +751,14 @@ class NSBMDConverter:
              
         num_polys = len(polygons)
         
-        # --- Dictionary: Maps polygon names to data ---
-        w.write_bytes(b'\x00' * (14 + 4 * num_polys))
+        # --- Dictionary for Polygons ---
+        self.build_nitro_dictionary(w, num_polys)
         
-        # --- Offsets Table ---
+        # TWO Offset Tables (skipped then read at NSBMD.cs:762-766)
+        w.write_bytes(b'\x00' * (4 * num_polys)) # SKIPPED
         offsets_start = w.tell()
-        w.write_bytes(b'\x00' * (4 * num_polys))
+        w.write_bytes(b'\x00' * (4 * num_polys)) # READ
+
         
         # --- Names ---
         for i, p in enumerate(polygons):
@@ -1166,8 +1247,6 @@ class NSBMDConverter:
         file_size_offset = self.writer.tell()
         self.writer.write("<I", 0)                # Total File Size Placeholder
         
-        self.writer.write("<H", 16)               # Header Size (Standard)
-        
         # Determine number of chunks based on mode
         chunks_to_write = []
         if export_mode == 'model':
@@ -1177,9 +1256,15 @@ class NSBMDConverter:
         elif export_mode == 'both':
             chunks_to_write = ['MDL0', 'TEX0']
             
-        # Number of blocks
+        # Number of blocks - CRITICAL FIX:
+        # Pokemon-DS-Rom-Editor reads this as 32-bit, then shifts right by 16 bits
+        # to get num_blocks. So we encode: (num_blocks << 16) | header_size
+        # See NSBMD.cs lines 1097-1098:
+        #   int numblock = reader.ReadInt32();
+        #   numblock >>= 16;
         num_blocks = len(chunks_to_write)
-        self.writer.write("<H", num_blocks) 
+        header_size = 16
+        self.writer.write("<I", (header_size) | (num_blocks << 16)) 
         
         # --- Block Offset Table ---
         # Nitro files require a table of absolute offsets to each block immediately following the header
