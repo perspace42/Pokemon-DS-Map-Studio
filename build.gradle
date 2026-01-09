@@ -6,7 +6,6 @@ plugins {
 
 repositories {
     mavenCentral()
-    jcenter()
     flatDir {
         dirs 'libs'
     }
@@ -14,23 +13,25 @@ repositories {
 
 dependencies {
     implementation fileTree(include: ['*.jar'], dir: 'libs')
-    implementation group: 'com.formdev', name: 'flatlaf', version: '0.39'
-    implementation group: 'com.miglayout', name: 'miglayout-swing', version: '5.0'
+    implementation 'com.formdev:flatlaf:0.39'
+    implementation 'com.miglayout:miglayout-swing:5.0'
 }
 
-version '2.2'
-mainClassName = "editor.MainFrame"
+application {
+    mainClass = 'editor.MainFrame'
+}
+
+version = '2.2'
 
 compileJava.options.encoding = 'UTF-8'
 compileTestJava.options.encoding = 'UTF-8'
 
 jar {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     entryCompression = ZipEntryCompression.STORED
-
     manifest {
-        attributes "Main-Class": mainClassName
+        attributes "Main-Class": 'editor.MainFrame'
     }
-
     from {
         configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
     }
