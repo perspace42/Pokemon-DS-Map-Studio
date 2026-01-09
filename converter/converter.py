@@ -782,7 +782,7 @@ class NSBMDConverter:
                  t = int(st[1] * 16) 
                  
                  # Pack: [ T (16 bits) | S (16 bits) ]
-                 param = (t << 16) | (s & 0xFFFF)
+                 param = ((t & 0xFFFF) << 16) | (s & 0xFFFF)
                  self.write_command(w, self.CMD_TEXCOORD, [param])
             
             elif tag == "nrm":
