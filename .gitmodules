@@ -1,0 +1,3 @@
+[submodule "deps/PKMDSMAP_Converter"]
+	path = deps/PKMDSMAP_Converter
+	url = https://github.com/perspace42/PKMDSMAP_Converter.git
